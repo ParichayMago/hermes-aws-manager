@@ -1,0 +1,23 @@
+name: aws-manager
+version: "0.5.0"
+manifest_version: 2
+description: Manage EC2, Lambda and S3 from the Hermes dashboard.
+author: Parichay
+license: MIT
+requires_hermes: ">=0.22.7"
+python_dependencies:
+  - "boto3==1.43.115"
+config_schema:
+  access_key:
+    type: secret
+    env: AWS_MANAGER_ACCESS_KEY_ID
+    label: AWS access key ID
+  secret_key:
+    type: secret
+    env: AWS_MANAGER_SECRET_ACCESS_KEY
+    label: AWS secret access key
+  session_token:
+    type: secret
+    env: AWS_MANAGER_SESSION_TOKEN
+    label: AWS session token
+    description: Include the token when using temporary AWS credentials.
