@@ -10,7 +10,16 @@ const SERVICES = {
   lambda: { title: 'Lambda', label: 'Functions', icon: 'symbol-function', create: 'Create function' },
   s3: { title: 'S3', label: 'Buckets', icon: 'database', create: 'Create bucket' }
 }
-const TABS = [['overview', 'Overview'], ['ec2', 'EC2'], ['lambda', 'Lambda'], ['s3', 'S3'], ['activity', 'Activity']]
+const EXTENDED = [
+  ['databases', 'Databases', 'RDS and DynamoDB'], ['apis', 'APIs', 'API Gateway'],
+  ['monitoring', 'Monitoring', 'CloudWatch metrics, logs, and alarms'],
+  ['networking', 'Networking', 'VPC, Load Balancing, and Route 53'],
+  ['containers', 'Containers', 'ECR, ECS, and Fargate'],
+  ['automation', 'Automation', 'EventBridge and SQS'], ['delivery', 'CDN', 'CloudFront'],
+  ['cost', 'Costs', 'Cost Explorer']
+]
+const TABS = [['overview', 'Overview'], ['ec2', 'EC2'], ['lambda', 'Lambda'], ['s3', 'S3'],
+  ...EXTENDED.map(([id, label]) => [id, label]), ['activity', 'Activity']]
 const STARTER = 'def lambda_handler(event, context):\n    return {"message": "Hello from Hermes", "event": event}\n'
 const styles = `
 .aws-console{--bg:var(--dt-background,#101318);--panel:var(--dt-card,#171b21);--line:var(--dt-border,#2e3540);--ink:var(--dt-foreground,#f0f3f8);--sub:var(--dt-muted-foreground,#a1abb8);--blue:var(--dt-primary,#82aaff);--deep:#11161f;--green:#5cd6ad;--amber:#ffd18b;--red:#ff9b9b;box-sizing:border-box;background:var(--bg);color:var(--ink);font:14px/1.5 Inter,system-ui,sans-serif;height:100%;overflow:auto;padding:26px clamp(15px,3vw,38px) 42px;color-scheme:dark}
@@ -22,9 +31,25 @@ const styles = `
 .aws-console .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin-bottom:14px}.aws-console .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;min-width:0;overflow:hidden}.aws-console .pad{padding:15px}.aws-console .tile-icon{display:inline-grid;place-items:center;width:28px;height:28px;background:#222e42;color:#b2c9fc;border-radius:6px}.aws-console .tile h2{font-size:14px}.aws-console .stat{font-size:30px;font-weight:630;line-height:1.15;margin:11px 0 4px}.aws-console .tile button{margin-top:12px}.aws-console .card-head{padding:13px 15px;border-bottom:1px solid var(--line);min-height:47px}.aws-console .table-wrap{overflow:auto}.aws-console table{border-collapse:collapse;width:100%;white-space:nowrap;text-align:left}.aws-console th{font-size:12px;color:var(--sub);font-weight:520;background:color-mix(in srgb,var(--panel) 80%,var(--bg));padding:10px 15px}.aws-console td{padding:10px 15px;border-top:1px solid var(--line);font-size:13px}.aws-console td .sub{display:block;font-size:11px}.aws-console .resource{border:0!important;background:none;padding:0!important;color:var(--ink);text-align:left;font-weight:620}.aws-console .resource:hover{text-decoration:underline}.aws-console .active-row{background:#21304755}.aws-console .empty{padding:22px 15px;color:var(--sub)}.aws-console .layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(285px,.63fr);gap:13px;align-items:start}.aws-console .stack{display:grid;gap:13px}.aws-console .actions{margin-top:13px}
 .aws-console .status{font-size:12px;display:inline-flex;gap:7px;align-items:center}.aws-console .status:before{content:'';display:block;width:7px;height:7px;border-radius:50%;background:currentColor}.aws-console .status.good{color:var(--green)}.aws-console .status.warn{color:var(--amber)}.aws-console .status.bad{color:var(--red)}
 .aws-console table{color:var(--ink)}
+.aws-console .activity table{table-layout:fixed;white-space:normal}
+.aws-console .activity th,.aws-console .activity td{overflow-wrap:anywhere;vertical-align:top}
+.aws-console .activity th:nth-child(1){width:21%}
+.aws-console .activity th:nth-child(2){width:35%}
+.aws-console .activity th:nth-child(3){width:25%}
+.aws-console .activity th:nth-child(4){width:19%}
+@media(max-width:680px){.aws-console .activity th,.aws-console .activity td{padding:8px 6px}}
 .aws-console .notice{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:11px 13px;margin:0 0 13px;font-size:13px}.aws-console .notice.error{border-color:#6e4146;color:var(--red)}.aws-console .notice.warn{border-color:#66543b;color:var(--amber)}.aws-console .notice.success{border-color:#366253;color:var(--green)}
 .aws-console dl{margin:8px 0 0}.aws-console .fact{display:grid;grid-template-columns:minmax(85px,.5fr) minmax(0,1fr);gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:12px}.aws-console .fact dt{color:var(--sub)}.aws-console .fact dd{margin:0;overflow-wrap:anywhere;text-align:right}.aws-console pre{margin:9px 0 0;padding:10px;border:1px solid var(--line);border-radius:6px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:280px;overflow:auto;background:var(--deep);font-size:12px}
 .aws-console .overlay{position:fixed;z-index:1000;inset:0;display:grid;place-items:center;background:#080d17bb;padding:18px}.aws-console .dialog{width:min(630px,100%);max-height:calc(100vh - 42px);overflow:auto;padding:18px;box-shadow:0 20px 100px #000a}.aws-console .dialog .between{margin-bottom:12px}.aws-console .fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}.aws-console .field{display:grid;gap:4px;min-width:0}.aws-console .field.wide{grid-column:1/-1}.aws-console .field label{font-size:12px;color:var(--sub)}.aws-console .field input,.aws-console .field select,.aws-console .field textarea{width:100%;background:var(--bg)}.aws-console .field textarea{resize:vertical;min-height:100px;font-family:ui-monospace,monospace;font-size:12px}.aws-console .field input[type=checkbox]{width:auto;margin-right:5px}.aws-console .dialog .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:15px;flex-wrap:wrap}
+.aws-console .service-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(195px,1fr));gap:9px;margin-top:10px}
+.aws-console .service-links button{white-space:normal;text-align:left;display:grid;gap:4px;align-content:start;min-height:62px}
+.aws-console .service-links .sub,.aws-console .service-views button{font-size:12px}
+.aws-console .service-views button[aria-pressed=true]{color:#dbe6ff;background:#223047;border-color:#5473a7}
+.aws-console .service-page .resource,.aws-console .service-page h3{overflow-wrap:anywhere;white-space:normal}
+.aws-console .service-fact button{font-size:11px;margin-left:6px;padding:1px 4px;vertical-align:middle}
+.aws-console .query-result{margin-top:12px}.aws-console .metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.aws-console .metric-bars{display:flex;align-items:flex-end;gap:2px;height:58px;margin-top:12px;border-bottom:1px solid var(--line)}
+.aws-console .metric-bars span{flex:1;min-width:1px;background:#92adf0;border-radius:2px 2px 0 0}
 @media(max-width:980px){.aws-console .layout{grid-template-columns:1fr}.aws-console .card-head input{width:min(170px,100%)}}@media(max-width:680px){.aws-console .cards{grid-template-columns:1fr}.aws-console .fields{grid-template-columns:1fr}.aws-console .scope{align-items:flex-start}.aws-console nav button{padding-inline:9px}}
 `
 
@@ -91,6 +116,7 @@ function Workspace({ api, scope, tab, setTab }) {
   const [connectionIssue, setConnectionIssue] = useState('')
   const [data, setData] = useState({})
   const [history, setHistory] = useState([])
+  const [serviceRevision, setServiceRevision] = useState(0)
   const [busy, setBusy] = useState(true)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(null)
@@ -156,9 +182,9 @@ function Workspace({ api, scope, tab, setTab }) {
 
   const canWrite = Boolean(connection && !connection.root)
 
-  function open(kind, title, values = {}) {
+  function open(kind, title, values = {}, spec = null) {
     setNotice(null)
-    setOperation({ kind, title, values })
+    setOperation({ kind, title, values, spec })
   }
 
   function select(kind, id) {
@@ -168,6 +194,7 @@ function Workspace({ api, scope, tab, setTab }) {
   }
 
   function switchTab(nextTab) {
+    if (nextTab !== tab && EXTENDED.some(([id]) => id === tab)) setNotice(null)
     setTab(nextTab)
     setSelected(null)
     setQuery('')
@@ -177,12 +204,14 @@ function Workspace({ api, scope, tab, setTab }) {
     const message = receipt.error || [receipt.title, receipt.result?.id, receipt.result?.state].filter(Boolean).join(' · ')
     setNotice({ tone: receipt.status === 'completed' ? 'success' : 'error', message, result: receipt.result })
     setOperation(null)
-    if (receipt.status === 'completed' && /\.(create|connect)$/.test(receipt.action)) {
-      select(receipt.action.split('.')[0], receipt.result?.id)
+    const kind = receipt.action.split('.')[0]
+    if (receipt.status === 'completed' && SERVICES[kind] && /\.(create|connect)$/.test(receipt.action)) {
+      select(kind, receipt.result?.id)
     }
     if (receipt.status === 'completed' && ['ec2.terminate', 'lambda.delete', 's3.delete'].includes(receipt.action)) {
       setSelected(null)
     }
+    setServiceRevision(previous => previous + 1)
     void refresh()
   }
 
@@ -210,7 +239,9 @@ function Workspace({ api, scope, tab, setTab }) {
       notice.result?.output !== undefined && h('pre', null, notice.result.output + (notice.result.truncated ? '\n[Response truncated]' : '')),
       notice.result?.request_id && h('div', { className: 'sub' }, 'AWS request ID ' + notice.result.request_id),
       notice.result?.log && h('details', null, h('summary', null, 'Invocation log'), h('pre', null, notice.result.log)),
-      notice.result?.arn && h('div', { className: 'mono' }, notice.result.arn)),
+      notice.result?.arn && h('div', { className: 'mono' }, notice.result.arn),
+      notice.result?.message_id && h('div', { className: 'mono' }, 'SQS message ID ' + notice.result.message_id),
+      h(QueryResult, { result: notice.result })),
     tab === 'overview' && h(React.Fragment, null,
       h('div', { className: 'cards' }, ...services.map(kind => {
         const item = SERVICES[kind]
@@ -224,8 +255,14 @@ function Workspace({ api, scope, tab, setTab }) {
             button(item.create, () => createFor(kind), 'primary', !canWrite),
             button('View ' + item.label.toLowerCase(), () => switchTab(kind), 'ghost')))
       })),
+      h('section', { className: 'card pad actions' }, h('h2', null, 'More AWS services'),
+        h('div', { className: 'service-links' }, ...EXTENDED.map(([id, label, description]) =>
+          h('button', { key: id, type: 'button', onClick: () => switchTab(id) },
+            h('strong', null, label), h('span', { className: 'sub' }, description))))),
       h(Activity, { items: history.slice(0, 6), verify, go: () => switchTab('activity') })),
     tab === 'activity' && h(Activity, { items: history, verify }),
+    connection && EXTENDED.some(([id]) => id === tab) &&
+      h(ExtendedService, { key: tab, group: tab, get, canWrite, open, revision: serviceRevision }),
     SERVICES[tab] && h('div', { className: selectedItem ? 'layout' : '' },
       h('section', { className: 'card' },
         h('div', { className: 'card-head row between' },
@@ -250,6 +287,203 @@ function Workspace({ api, scope, tab, setTab }) {
     operation && h(Operation, { key: operation.kind, operation, api, scope, get, after, close: () => setOperation(null) }))
 }
 
+function QueryResult({ result }) {
+  if (result?.costs) {
+    const { period, estimated, incomplete, services } = result.costs
+    return h('div', { className: 'stack query-result' },
+      h('p', { className: 'sub' }, period.Start + ' through ' + period.End + ' (end exclusive)' +
+        (estimated ? ' · estimated' : '') + (incomplete ? ' · incomplete report' : '')),
+      table(['Service', 'Unblended cost'], services.map(item => cellRow(item.service + item.unit,
+        [item.service, item.amount + ' ' + item.unit])), 'No spend was reported for this period.'))
+  }
+  if (!result?.series) return null
+  return h('div', { className: 'metric-grid query-result' }, ...result.series.map(metric => {
+    const peak = Math.max(1, ...metric.points.map(([, value]) => value))
+    const last = metric.points.at(-1)
+    const unit = { CPUUtilization: '%', Duration: ' ms' }[metric.label] || ''
+    return h('section', { key: metric.label, className: 'card pad' },
+      h('div', { className: 'row between' }, h('h3', null, metric.label),
+        last && h('span', { className: 'mono', title: date(last[0]) }, last[1].toFixed(2) + unit)),
+      last ? h('div', { className: 'metric-bars', role: 'img', 'aria-label': metric.label + ' over the selected period' },
+        ...metric.points.map(([time, value]) => h('span', {
+          key: time, style: { height: Math.max(3, value / peak * 100) + '%' },
+          title: date(time) + ' · ' + value.toFixed(2) + unit
+        }))) : h('p', { className: 'sub' }, 'No datapoints in this period.'),
+      metric.status !== 'Complete' && h('p', { className: 'sub' }, metric.status))
+  }))
+}
+
+function ExtendedService({ group, get, canWrite, open, revision }) {
+  const [catalog, setCatalog] = useState(null)
+  const [viewId, setViewId] = useState('')
+  const [parent, setParent] = useState('')
+  const [parents, setParents] = useState([])
+  const [parentCursor, setParentCursor] = useState(null)
+  const [page, setPage] = useState(null)
+  const [selected, setSelected] = useState(null)
+  const [detail, setDetail] = useState(null)
+  const [query, setQuery] = useState('')
+  const [error, setError] = useState('')
+  const [detailError, setDetailError] = useState('')
+  const [copied, setCopied] = useState('')
+  const [refresh, setRefresh] = useState(0)
+  const [pending, setPending] = useState(false)
+  const listRequest = useRef(0)
+  const parentRequest = useRef(0)
+  const view = catalog?.views.find(item => item.id === viewId)
+  const path = '/services/' + group + '/'
+  const target = selected && page?.items.find(item => item.id === selected)
+
+  useEffect(() => {
+    let active = true
+    get(path + 'catalog').then(result => {
+      if (active) {
+        setCatalog(result)
+        setViewId(result.views[0]?.id || '')
+      }
+    }).catch(issue => { if (active) setError(errorText(issue)) })
+    return () => { active = false }
+  }, [group])
+
+  useEffect(() => {
+    const serial = ++parentRequest.current
+    setParents([])
+    setParentCursor(null)
+    if (view?.parent) {
+      get(path + view.parent[0]).then(result => {
+        if (serial === parentRequest.current) {
+          setParents(result.items)
+          setParentCursor(result.cursor)
+        }
+      }).catch(issue => { if (serial === parentRequest.current) setError(errorText(issue)) })
+    }
+    return () => { parentRequest.current += 1 }
+  }, [viewId, refresh, revision])
+
+  useEffect(() => {
+    const serial = ++listRequest.current
+    setPage(null)
+    setError('')
+    setPending(false)
+    if (view && (!view.parent || parent)) {
+      get(path + view.id, { parent }).then(result => {
+        if (serial === listRequest.current) setPage(result)
+      }).catch(issue => { if (serial === listRequest.current) setError(errorText(issue)) })
+    }
+    return () => { listRequest.current += 1 }
+  }, [viewId, parent, refresh, revision])
+
+  useEffect(() => {
+    let active = true
+    setDetail(null)
+    setDetailError('')
+    if (selected && viewId === 'deployments') {
+      get('/deployments/detail', { stack_id: selected }).then(result => {
+        if (active) setDetail(result)
+      }).catch(issue => { if (active) setDetailError(errorText(issue)) })
+    }
+    return () => { active = false }
+  }, [viewId, selected, refresh, revision])
+
+  function selectView(id) {
+    setViewId(id)
+    setParent('')
+    setSelected(null)
+    setQuery('')
+  }
+
+  async function more() {
+    if (!page?.cursor || pending) return
+    const serial = listRequest.current
+    setPending(true)
+    try {
+      const next = await get(path + view.id, { parent, cursor: page.cursor })
+      if (serial === listRequest.current) setPage(current => {
+        const items = new Map(current.items.map(item => [item.id, item]))
+        next.items.forEach(item => items.set(item.id, item))
+        return { items: [...items.values()], cursor: next.cursor }
+      })
+    } catch (issue) {
+      if (serial === listRequest.current) setError(errorText(issue))
+    } finally {
+      if (serial === listRequest.current) setPending(false)
+    }
+  }
+
+  async function moreParents() {
+    if (!view?.parent || !parentCursor) return
+    const serial = ++parentRequest.current
+    try {
+      const next = await get(path + view.parent[0], { cursor: parentCursor })
+      if (serial === parentRequest.current) {
+        setParents(current => [...new Map([...current, ...next.items].map(item => [item.id, item])).values()])
+        setParentCursor(next.cursor)
+      }
+    } catch (issue) {
+      if (serial === parentRequest.current) setError(errorText(issue))
+    }
+  }
+
+  async function copy(label, value) {
+    try {
+      await writeClipboardText(String(value))
+      setCopied(label)
+    } catch (issue) {
+      setDetailError(errorText(issue))
+    }
+  }
+
+  function action(spec, resource) {
+    const supplied = resource ? Object.fromEntries(spec.fields.filter(field => ['id', 'cluster', 'repository'].includes(field.key))
+      .map(field => [field.key, resource[field.key]])) : {}
+    return h('button', { key: spec.id, type: 'button', className: spec.id === 'deployment.delete' ? 'danger' : '',
+      disabled: !spec.read && !canWrite,
+      onClick: () => open(spec.id, spec.title, supplied, spec) }, spec.title)
+  }
+
+  if (!catalog) return h('p', { className: error ? 'notice error' : 'sub', role: error ? 'alert' : 'status' },
+    error || 'Loading service controls…')
+  const matching = (page?.items || []).filter(item =>
+    (item.name + ' ' + item.id).toLowerCase().includes(query.trim().toLowerCase()))
+  const values = target && { 'Resource ID': target.id, ...target.facts, ...detail }
+  return h('div', { className: 'stack service-page' },
+    h('div', { className: 'row between' }, h('h2', null, catalog.label),
+      h('div', { className: 'row' }, ...catalog.actions.map(spec => action(spec)),
+        view && button('Refresh service', () => setRefresh(value => value + 1), 'ghost'))),
+    catalog.views.length > 0 && h('div', { className: 'row service-views', role: 'group', 'aria-label': catalog.label + ' inventory' },
+      ...catalog.views.map(item => h('button', { key: item.id, type: 'button', 'aria-pressed': item.id === viewId,
+        onClick: () => selectView(item.id) }, item.label))),
+    error && h('p', { className: 'notice error', role: 'alert' }, error),
+    view?.parent && h('div', { className: 'row' },
+      h('label', { htmlFor: 'aws-service-parent' }, view.parent[1]),
+      h('select', { id: 'aws-service-parent', value: parent, onChange: event => {
+        setParent(event.target.value)
+        setSelected(null)
+      } }, options([['', 'Select a resource'], ...parents.map(item => [item.id, item.name])])),
+      parentCursor && button('More resources', moreParents, 'ghost')),
+    view && (!view.parent || parent) && h('div', { className: target ? 'layout' : '' },
+      h('section', { className: 'card' },
+        h('div', { className: 'card-head row between' }, h('h3', null, view.label),
+          h('input', { 'aria-label': 'Filter ' + view.label, value: query, placeholder: 'Filter resources',
+            onChange: event => setQuery(event.target.value) })),
+        page ? table(['Resource', 'State'], matching.map(item => cellRow(item.id, [
+          h('button', { className: 'resource', type: 'button', onClick: () => { setCopied(''); setSelected(item.id) } },
+            item.name), item.state ? status(item.state) : '—'
+        ], item.id === selected)), 'No matching resources.') : !error && h('p', { className: 'empty' }, 'Loading inventory…'),
+        page?.cursor && h('div', { className: 'pad' }, button('Load more', more, '', pending))),
+      target && h('section', { className: 'card' },
+        h('div', { className: 'card-head row between' }, h('h3', null, target.name),
+          button('Close details', () => setSelected(null), 'ghost')),
+        h('div', { className: 'pad stack' },
+          h('dl', null, ...Object.entries(values).filter(([, value]) => value != null && value !== '').map(([label, value]) =>
+            h('div', { key: label, className: 'fact service-fact' }, h('dt', null, label),
+              h('dd', null, typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value),
+                typeof value === 'string' && h('button', { className: 'ghost', type: 'button',
+                  'aria-label': 'Copy ' + label, onClick: () => copy(label, value) }, copied === label ? 'Copied' : 'Copy'))))),
+          detailError && h('p', { role: 'alert', className: 'notice error' }, detailError),
+          h('div', { className: 'row' }, ...view.actions.map(spec => action(spec, target)))))))
+}
+
 function Activity({ items, verify, go }) {
   const [checking, setChecking] = useState(null)
   const [issue, setIssue] = useState(null)
@@ -266,7 +500,7 @@ function Activity({ items, verify, go }) {
     }
   }
 
-  return h('section', { className: 'card' },
+  return h('section', { className: 'card activity' },
     h('div', { className: 'card-head row between' },
       h('h2', null, 'Activity'), go && button('View activity', go, 'ghost')),
     table(['Action', 'Target', 'Status', 'Submitted'], items.map(item => {
@@ -492,8 +726,10 @@ function initial(kind, supplied) {
 }
 
 function Operation({ operation, api, scope, get, after, close }) {
-  const { kind, title } = operation
-  const [values, setValues] = useState(() => initial(kind, operation.values))
+  const { kind, title, spec } = operation
+  const [values, setValues] = useState(() => spec
+    ? { ...Object.fromEntries(spec.fields.map(field => [field.key, field.default])), ...operation.values }
+    : initial(kind, operation.values))
   const [extras, setExtras] = useState(null)
   const [extrasError, setExtrasError] = useState('')
   const [plan, setPlan] = useState(null)
@@ -626,16 +862,26 @@ function Operation({ operation, api, scope, get, after, close }) {
       h('input', { type: 'file', id: 'aws-upload-file', required: true, onChange: fileSelected })),
     field('key', 'Object key', { ...required, maxLength: 1024, wide: true, placeholder: 'reports/file.csv' }))
 
+  if (spec) controls.push(...spec.fields.map(input => field(input.key, input.label, {
+    required: !input.optional,
+    readOnly: Object.hasOwn(operation.values, input.key),
+    ...(input.options.length ? { list: input.options } : {}),
+    ...(input.low != null ? { type: 'number', min: input.low, max: input.high } : {}),
+    ...(input.payload ? { type: 'textarea', wide: true, spellCheck: false, maxLength: 65536 }
+      : { maxLength: input.limit, wide: input.limit > 255 || input.key === 'role' }),
+    hint: input.hint
+  })))
+
   const details = plan && Object.entries(plan.settings).filter(([key, value]) =>
     value !== '' && !['root_device', 'revision', 'etag'].includes(key)).map(([key, value]) =>
-    [LABELS[key] || key, typeof value === 'boolean' ? (value ? 'Yes' : 'No') : value])
+    [spec?.fields.find(field => field.key === key)?.label || (spec ? key.replaceAll('_', ' ') : LABELS[key] || key), typeof value === 'boolean' ? (value ? 'Yes' : 'No') : value])
 
   return h('dialog', { ref: dialog, className: 'card dialog', 'aria-labelledby': 'aws-action-title',
     onCancel: event => { event.preventDefault(); if (!busy) close() } },
     h('form', { onSubmit: submit },
       h('div', { className: 'row between' }, h('h2', { id: 'aws-action-title' }, plan ? 'Review ' + title.toLowerCase() : title),
         button('Close', close, 'ghost', busy)),
-      h('p', { className: 'sub' }, ACTION_HELP[kind] || 'Apply this change to the selected resource.'),
+      h('p', { className: 'sub' }, spec?.description || ACTION_HELP[kind] || 'Apply this change to the selected resource.'),
       extrasError && !plan && h('p', { className: 'notice warn' }, extrasError),
       issue && h('div', { className: 'notice error', role: 'alert' }, issue),
       plan ? h(React.Fragment, null,
@@ -643,12 +889,13 @@ function Operation({ operation, api, scope, get, after, close }) {
           ...(kind === 's3.upload' ? [['File', fileName], ['Size', size(plan.size)]] : [])]),
         ['lambda.create', 'lambda.deploy', 'lambda.invoke'].includes(kind) && h('details', null,
           h('summary', null, kind === 'lambda.invoke' ? 'Test event' : 'Review Python source'), h('pre', null, values.payload)),
+        spec && values.payload && h('details', null, h('summary', null, 'Review request content'), h('pre', null, values.payload)),
         plan.requires_confirmation && h('div', { className: 'field actions' },
           h('label', { htmlFor: 'aws-confirm' }, 'Type ' + plan.target + ' to confirm'),
           h('input', { id: 'aws-confirm', required: true, value: confirmation, onChange: event => setConfirmation(event.target.value) })))
         : h(React.Fragment, null,
-          operation.values.id && facts([['Instance', operation.values.id]]),
-          operation.values.name && !['ec2.rename'].includes(kind) && facts([['Function', operation.values.name]]),
+          !spec && operation.values.id && facts([['Instance', operation.values.id]]),
+          !spec && operation.values.name && !['ec2.rename'].includes(kind) && facts([['Function', operation.values.name]]),
           operation.values.bucket && facts([['Bucket', operation.values.bucket]]),
           operation.values.key && kind !== 's3.upload' && facts([['Object key', operation.values.key]]),
           controls.length ? h('div', { className: 'fields' }, controls) : null),

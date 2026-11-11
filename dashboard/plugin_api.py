@@ -14,6 +14,8 @@ import uuid
 import zipfile
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
+from importlib.util import module_from_spec, spec_from_file_location
+from pathlib import Path
 from typing import Literal
 
 import boto3
@@ -23,6 +25,11 @@ from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import APIRouter, Depends, HTTPException
 from plugins.plugin_storage import plugin_db
 from pydantic import BaseModel, Field
+
+# Hermes loads dashboard APIs directly from their paths, without a package context.
+service_spec = spec_from_file_location("aws_manager_services", Path(__file__).with_name("services.py"))
+services = module_from_spec(service_spec)
+service_spec.loader.exec_module(services)
 
 router = APIRouter()
 REGIONS = ("us-east-1", "us-east-2", "us-west-1", "us-west-2", "eu-west-1", "eu-central-1", "ap-south-1",
@@ -52,7 +59,9 @@ ACTIONS = {
     "s3.upload": "Upload S3 object", "s3.remove": "Delete current S3 object",
     "s3.delete": "Delete empty bucket",
 }
-DESTRUCTIVE = {"ec2.terminate", "lambda.delete", "lambda.url_delete", "s3.remove", "s3.delete"}
+ACTION_TITLES = {**ACTIONS, **{key: spec["title"] for key, spec in services.ACTIONS.items()}}
+DESTRUCTIVE = {"ec2.terminate", "lambda.delete", "lambda.url_delete", "s3.remove", "s3.delete"} | {
+    key for key, spec in services.ACTIONS.items() if spec["destructive"]}
 READBACK_ACTIONS = {"ec2.create", "s3.upload"}
 STARTER = 'def lambda_handler(event, context):\n    return {"message": "Hello from Hermes", "event": event}\n'
 
@@ -192,6 +201,8 @@ def role_arn(values, key, account, *, profile=False, optional=False):
 
 
 def payload_bytes(action, payload):
+    if action in services.ACTIONS:
+        return services.data_bytes(action, payload)
     if action == "ec2.key_import":
         if len(payload) > 8192 or not re.fullmatch(r"(?:ssh-rsa|ssh-ed25519) [A-Za-z0-9+/=]+(?: [^\r\n]*)?", payload):
             invalid("Paste an OpenSSH RSA or Ed25519 public key.")
@@ -287,10 +298,10 @@ def normalized(action, values, account):
 
 def archived(row):
     result = json.loads(row["result"]) if row["result"] else None
-    can_verify = (row["status"] == "completed" and row["action"] in READBACK_ACTIONS
-                  and bool(result and result.get("id") and not result.get("verification")))
+    can_verify = (row["status"] == "completed" and bool(result and result.get("id") and not result.get("verification"))
+                  and (row["action"] in READBACK_ACTIONS or bool(result.get("verification_kind"))))
     return {"id": row["id"], "mode": row["mode"], "region": row["region"], "action": row["action"],
-            "title": ACTIONS[row["action"]], "target": row["target"], "status": row["status"],
+            "title": ACTION_TITLES[row["action"]], "target": row["target"], "status": row["status"],
             "submitted": datetime.fromtimestamp(row["submitted"], timezone.utc).isoformat(),
             "finished": row["finished"], "result": result, "can_verify": can_verify, "error": row["error"]}
 
@@ -342,18 +353,30 @@ def get_connection(scope: Scope = Depends()):
             "identity": principal, "root": principal.endswith(":root"), "regions": REGIONS}
 
 
+def writes_aws(action):
+    return action != "s3.disconnect" and not services.ACTIONS.get(action, {}).get("read")
+
+
 @router.post("/plans")
 def prepare(request: Proposal):
     action, scope = request.action, request.scope
-    if action not in ACTIONS:
+    if action not in ACTION_TITLES:
         invalid("Unsupported action.")
-    account, principal, session = connection(scope, write=action != "s3.disconnect")
-    settings = normalized(action, request.values, account)
+    account, principal, session = connection(scope, write=writes_aws(action))
+    extended = action in services.ACTIONS
+    settings = (services.normalize(action, request.values, account, scope.region) if extended
+                else normalized(action, request.values, account))
     payload = request.values.get("payload", "")
     if not isinstance(payload, str) or len(payload) > 6 * 1024 * 1024:
         invalid("Invalid payload.")
     data = payload_bytes(action, payload)
     proof = hashlib.sha256(data).hexdigest()
+    if extended:
+        settings = safe_read(lambda: services.prepare(action, settings, data, session, account, scope.region))
+        if not session:
+            with storage(write=True) as db:
+                services.demo_seed(db, scope.region, account)
+                settings = services.demo_prepare(db, scope.region, action, settings, data)
     if action == "ec2.create":
         settings.update(safe_read(lambda: ec2_image(session, settings)) if session else
                         {"ami": "ami-demo-al2023", "root_device": "/dev/xvda"})
@@ -365,13 +388,13 @@ def prepare(request: Proposal):
     if session and action in {"s3.connect", "s3.upload", "s3.remove", "s3.delete"}:
         verify_bucket(session, scope.region, settings["bucket"], account)
     plan_id = uuid.uuid4().hex
-    target = target_for(action, settings)
+    target = services.target(action, settings) if extended else target_for(action, settings)
     with storage(write=True) as db:
         db.execute("DELETE FROM actions WHERE status='ready' AND submitted < ?", (time.time() - PLAN_TTL,))
         db.execute("""INSERT INTO actions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?, NULL, NULL, NULL)""",
                    (plan_id, scope.mode, scope.region, account, principal, action, target,
                     json.dumps(settings), proof, time.time()))
-    return {"id": plan_id, "title": ACTIONS[action], "target": target, "mode": scope.mode,
+    return {"id": plan_id, "title": ACTION_TITLES[action], "target": target, "mode": scope.mode,
             "region": scope.region, "account": account, "settings": settings, "size": len(data),
             "requires_confirmation": action in DESTRUCTIVE, "expires_in": PLAN_TTL}
 
@@ -393,7 +416,7 @@ def apply(plan_id: str, body: Apply):
     if hashlib.sha256(data).hexdigest() != row["proof"]:
         invalid("The payload changed. Review a new plan.", 409)
     scope = Scope(mode=row["mode"], region=row["region"])
-    account, principal, session = connection(scope, write=action != "s3.disconnect")
+    account, principal, session = connection(scope, write=writes_aws(action))
     if (account, principal) != (row["account"], row["principal"]):
         invalid("AWS identity changed after review. Review a new plan.", 409)
     with storage(write=True) as db:
@@ -407,7 +430,13 @@ def apply(plan_id: str, body: Apply):
     settings = json.loads(row["parameters"])
     status, result, error = "completed", None, None
     try:
-        if action in {"s3.connect", "s3.disconnect"}:
+        if action in services.ACTIONS:
+            if session:
+                result = services.live_action(session, scope, account, action, settings, data, plan_id)
+            else:
+                with storage(write=True) as db:
+                    result = services.demo_action(db, scope, account, action, settings, data, plan_id)
+        elif action in {"s3.connect", "s3.disconnect"}:
             if session and action == "s3.connect":
                 verify_bucket(session, scope.region, settings["bucket"], account)
             elif not session and action == "s3.connect":
@@ -418,16 +447,16 @@ def apply(plan_id: str, body: Apply):
         else:
             result = live_action(session, scope, account, action, settings, data, plan_id) if session else \
                 demo_action(scope, action, settings, data, plan_id)
-            if result.get("function_error"):
-                status, error = "failed", "Lambda returned a function error."
-            if result.get("warning"):
-                status, error = "partial", result["warning"]
+        if result.get("function_error"):
+            status, error = "failed", "Lambda returned a function error."
+        if result.get("warning"):
+            status, error = "partial", result["warning"]
     except (ClientError, HTTPException) as exc:
         status, error = "failed", aws_error(exc)
     except BotoCoreError as exc:
         status, error = "unverified", f"AWS result could not be confirmed ({type(exc).__name__}). Refresh inventory before retrying."
     with storage(write=True) as db:
-        summary = {key: value for key, value in (result or {}).items() if key not in {"output", "log"}}
+        summary = {key: value for key, value in (result or {}).items() if key not in {"output", "log", "series", "costs"}}
         db.execute("UPDATE actions SET status=?, finished=?, result=?, error=? WHERE id=?",
                    (status, utc(), json.dumps(summary, default=str) if summary else None, error, plan_id))
         receipt = archived(db.execute("SELECT * FROM actions WHERE id=?", (plan_id,)).fetchone())
@@ -680,6 +709,45 @@ def inventory(kind: str, cursor: str = "", scope: Scope = Depends()):
     return {"items": rows, "cursor": next_cursor, "warning": warning}
 
 
+@router.get("/services/{group}/catalog")
+def service_catalog(group: str):
+    return services.catalog(group)
+
+
+@router.get("/services/{group}/{view_id}")
+def service_inventory(group: str, view_id: str, cursor: str = "", parent: str = "", scope: Scope = Depends()):
+    view = next((view for view in services.catalog(group)["views"] if view["id"] == view_id), None)
+    if not view:
+        invalid("Unknown inventory view.", 404)
+    account, _, session = connection(scope)
+    parent_patterns = {"routes": r"[a-z0-9]{6,20}", "records": r"[A-Z0-9]{1,32}",
+                       "images": r"[a-z0-9][a-z0-9._/-]{1,255}",
+                       "tasks": rf"arn:aws:ecs:{scope.region}:{account}:cluster/[a-zA-Z0-9_-]+"}
+    if view["parent"] and not re.fullmatch(parent_patterns[view_id], parent):
+        invalid("Select a parent resource in this account and region.")
+    if len(cursor) > 4096 or (parent and not view["parent"]):
+        invalid("Invalid inventory query.")
+    if session:
+        rows, next_cursor = safe_read(lambda: services.live_inventory(session, scope.region, group, view_id, cursor, parent))
+    else:
+        with storage(write=True) as db:
+            services.demo_seed(db, scope.region, account)
+            rows, next_cursor = services.demo_inventory(db, scope.region, group, view_id, parent, cursor)
+    return {"items": rows, "cursor": next_cursor}
+
+
+@router.get("/deployments/detail")
+def deployment_detail(stack_id: str, scope: Scope = Depends()):
+    if len(stack_id) > 512 or not re.fullmatch(services.STACK, stack_id):
+        invalid("Invalid deployment ARN.")
+    account, _, session = connection(scope)
+    if session:
+        return safe_read(lambda: services.stack_detail(session, account, scope.region, stack_id))
+    with storage() as db:
+        stack = services.demo_deployment(db, scope.region, stack_id)
+    return {"Stack status": stack["state"], **stack["facts"]}
+
+
 @router.get("/network")
 def network(scope: Scope = Depends()):
     _, _, session = connection(scope)
@@ -831,7 +899,14 @@ def verify_receipt(receipt_id: str, scope: Scope = Depends()):
         return receipt
 
     result = receipt["result"]
-    if row["action"] == "ec2.create":
+    if row["action"] in services.ACTIONS:
+        settings = json.loads(row["parameters"])
+        if session:
+            detail = safe_read(lambda: services.verify(session, scope, account, row["action"], settings, result))
+        else:
+            with storage() as db:
+                detail = services.demo_verify(db, scope, settings, result)
+    elif row["action"] == "ec2.create":
         instance_id = result["id"]
         if session:
             client = session.client("ec2", config=READ_CONFIG)

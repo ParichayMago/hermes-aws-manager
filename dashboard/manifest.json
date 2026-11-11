@@ -2,7 +2,7 @@
   "name": "aws-manager",
   "label": "AWS Manager",
   "description": "Provision and manage AWS resources in Hermes.",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "tab": { "path": "/aws-manager", "hidden": true },
   "api": "plugin_api.py"
 }

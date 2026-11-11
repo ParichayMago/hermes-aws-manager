@@ -1,7 +1,7 @@
 name: aws-manager
-version: "0.5.0"
+version: "0.6.0"
 manifest_version: 2
-description: Manage EC2, Lambda and S3 from the Hermes dashboard.
+description: Deploy, monitor and verify AWS resources from the Hermes dashboard.
 author: Parichay
 license: MIT
 requires_hermes: ">=0.22.7"
